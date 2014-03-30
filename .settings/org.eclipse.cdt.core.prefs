@@ -1,0 +1,17 @@
+#Tue Mar 25 15:13:05 MDT 2014
+eclipse.preferences.version=1
+environment/project/com.xmos.cdt.toolchain.1107235731/XMOS_MODULE_PATH/delimiter=\:
+environment/project/com.xmos.cdt.toolchain.1107235731/XMOS_MODULE_PATH/operation=append
+environment/project/com.xmos.cdt.toolchain.1107235731/XMOS_MODULE_PATH/value=/Users/tylerjw/.xmos/repos/sw_startkit_examples/app_noughts_and_crosses\:/Users/tylerjw/.xmos/repos/sw_startkit_examples/app_spinning_bar\:/Users/tylerjw/.xmos/repos/sc_capacitive_sensing/module_capacitive_sensing\:/Users/tylerjw/.xmos/repos/sc_util/module_logging\:/Users/tylerjw/.xmos/repos/sw_startkit_examples/module_startkit_gpio\:/Users/tylerjw/.xmos/repos/sc_util/module_xassert
+environment/project/com.xmos.cdt.toolchain.1107235731/append=true
+environment/project/com.xmos.cdt.toolchain.1107235731/appendContributed=true
+environment/project/com.xmos.cdt.toolchain.1844097952/XMOS_MODULE_PATH/delimiter=\:
+environment/project/com.xmos.cdt.toolchain.1844097952/XMOS_MODULE_PATH/operation=append
+environment/project/com.xmos.cdt.toolchain.1844097952/XMOS_MODULE_PATH/value=/Users/tylerjw/.xmos/repos/sw_startkit_examples/app_noughts_and_crosses\:/Users/tylerjw/.xmos/repos/sw_startkit_examples/app_spinning_bar\:/Users/tylerjw/.xmos/repos/sc_capacitive_sensing/module_capacitive_sensing\:/Users/tylerjw/.xmos/repos/sc_util/module_logging\:/Users/tylerjw/.xmos/repos/sw_startkit_examples/module_startkit_gpio\:/Users/tylerjw/.xmos/repos/sc_util/module_xassert
+environment/project/com.xmos.cdt.toolchain.1844097952/append=true
+environment/project/com.xmos.cdt.toolchain.1844097952/appendContributed=true
+environment/project/com.xmos.cdt.toolchain.741395814/XMOS_MODULE_PATH/delimiter=\:
+environment/project/com.xmos.cdt.toolchain.741395814/XMOS_MODULE_PATH/operation=append
+environment/project/com.xmos.cdt.toolchain.741395814/XMOS_MODULE_PATH/value=/Users/tylerjw/.xmos/repos/sw_startkit_examples/app_noughts_and_crosses\:/Users/tylerjw/.xmos/repos/sw_startkit_examples/app_spinning_bar\:/Users/tylerjw/.xmos/repos/sc_capacitive_sensing/module_capacitive_sensing\:/Users/tylerjw/.xmos/repos/sc_util/module_logging\:/Users/tylerjw/.xmos/repos/sw_startkit_examples/module_startkit_gpio\:/Users/tylerjw/.xmos/repos/sc_util/module_xassert
+environment/project/com.xmos.cdt.toolchain.741395814/append=true
+environment/project/com.xmos.cdt.toolchain.741395814/appendContributed=true
