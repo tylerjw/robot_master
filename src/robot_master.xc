@@ -8,6 +8,7 @@
 #include <platform.h>
 #include <xs1.h>
 #include <stdio.h>
+#include <string.h>
 
 
 out port LEDS = on tile[0]:XS1_PORT_4F;
@@ -18,6 +19,9 @@ in port BUTTON2 = on tile[0]:XS1_PORT_1L;
 in port RXB = on tile[0]:XS1_PORT_1E;
 in port RXA = on tile[0]:XS1_PORT_1F;
 out port TX = on tile[0]:XS1_PORT_4C;
+
+out port DEBUGTX = on tile[0]:XS1_PORT_1D;
+in port DEBUGRX = on tile[0]:XS1_PORT_1C;
 
 out port LASER = on tile[0]:XS1_PORT_1B;
 
@@ -38,6 +42,9 @@ void delay(int delay){
 #define MAX_COLUMNS           30
 #define MAX_ROWS              30
 
+#define RX_BUF_SIZE          100
+#define NEXT(x)              ((x+1)%RX_BUF_SIZE)
+
 #define START           0b00
 #define DONE            0b11
 
@@ -48,26 +55,53 @@ interface laser_int {
     void laser_off();
 };
 
-int wait_for_continue(streaming chanend rxa, streaming chanend rxb) {
-    int c = 1;
+interface uart_int {
+    void clear();
+    int avalible_a();
+    int avalible_b();
+    int getc_a();
+    int getc_b();
+};
 
-    while(c != 0) {
-        rxa :> c;
+void clearRXchannels(chanend rxa, chanend rxb){
+    int value;
+    select{
+        case rxa :> value:
+            break;
+        default:
+            break;
     }
-
-    c = 1;
-    while(c != 0) {
-        rxb :> c;
+    select{
+        case rxb :> value:
+            break;
+        default:
+            break;
     }
 }
 
-int uart_getc(streaming chanend rx) {
+void wait_for_continue(chanend rxa, chanend rxb) {
+    int ca = 1,
+        cb = 1;
+
+    while(ca != 0 && cb != 0) {
+        select {
+            case rxa :> ca:
+                break;
+            case rxb :> cb:
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+int uart_getc(chanend rx) {
     int c;
     rx :> c;
     return c;
 }
 
-int uart_geti(streaming chanend rx) {
+int uart_geti(chanend rx) {
     int c, r;
     rx :> c;
     r = c;
@@ -76,16 +110,16 @@ int uart_geti(streaming chanend rx) {
     return r;
 }
 
-void button_control(streaming chanend rxa, streaming chanend rxb) {
-    int num_points_a;
-    int num_points_b;
-    int num_columns_a;
-    int num_rows_b;
-
-    int points_a[POINT_BUFFER_LENGTH][2];
-    int points_b[POINT_BUFFER_LENGTH][2];
-    int col_idx[MAX_COLUMNS];
-    int row_idx[MAX_ROWS];
+void button_control(interface uart_int client rx) {
+//    int num_points_a;
+//    int num_points_b;
+//    int num_columns_a;
+//    int num_rows_b;
+//
+//    int points_a[POINT_BUFFER_LENGTH][2];
+//    int points_b[POINT_BUFFER_LENGTH][2];
+//    int col_idx[MAX_COLUMNS];
+//    int row_idx[MAX_ROWS];
 
     LEDS <: 0;
     while(1) {
@@ -97,11 +131,14 @@ void button_control(streaming chanend rxa, streaming chanend rxb) {
 #endif
             //laser.laser_on();
             LASER <: 1;
+            rx.clear();
             tx(TX, CAPTURE_DOTS);
-            wait_for_continue(rxa, rxb);
+            while(rx.getc_a() != 0) delay(1e6);
+            while(rx.getc_b() != 0) delay(1e6);
             LASER <: 0;
             BUTTON1 when pinseq(1) :> void;
             delay(20e6); // debounce
+            printf("took the forst picture\n");
             break;
 
 
@@ -110,9 +147,15 @@ void button_control(streaming chanend rxa, streaming chanend rxb) {
 #ifdef DEBUG
             printf("Button 2 pressed\n");
 #endif
+            rx.clear();
             tx(TX, CAPTURE_NORM);
-            wait_for_continue(rxa, rxb);
-
+            while(!rx.avalible_a() && rx.getc_a() != 0);
+            while(!rx.avalible_b() && rx.getc_b() != 0);
+#ifdef DEBUG
+            printf("Captured no dots...\n");
+#endif
+            /*
+            clearRXchannels(rxa,rxb);
             tx(TX, READ_A);
             num_points_a = uart_geti(rxa);
             num_columns_a = uart_geti(rxa);
@@ -150,8 +193,9 @@ void button_control(streaming chanend rxa, streaming chanend rxb) {
                 printf("(%d, %d)\n", points_b[i][0], points_b[i][1]);
             }
 #endif
-
+            */
             BUTTON2 when pinseq(1) :> void;
+
             break;
         }
     }
@@ -204,84 +248,184 @@ void pwm_laser_thread(interface laser_int server from_button) {
     }
 }
 
-/*
-void sensor_control(void) {
-    int n_points_a = 0;
-    int n_points_b = 0;
+void multiRX(interface uart_int server reader, in port RXA, in port RXB){
+    timer timera;
+    timer timerb;
+    int timea;
+    int timeb;
+    int valuea;
+    int valueb;
+    int bytea;
+    int byteb;
+    int statea = 10; //10=wating for start bit, 9=checking valid start bit, (1-8)=# of bits left, 0=checking end bit
+    int stateb = 10;
+    int UARTdelay = 10417;//baud rate = 9600
+    timera :> timea;
+    timerb :> timeb;
 
-    int points_a[POINT_BUFFER_LENGTH][2];
-    int points_b[POINT_BUFFER_LENGTH][2];
+    int buffera[RX_BUF_SIZE];
+    int starta = 0;
+    int enda = 0;
+    int bufferb[RX_BUF_SIZE];
+    int startb = 0;
+    int endb = 0;
 
-    int n_columns_a = 0;
-    int col_idx[MAX_COLUMNS];
-    int n_rows_b = 0;
-    int row_idx[MAX_ROWS];
+    while(1){
+        select{
+            case timera when timerafter(timea) :> timea://time to poll the uartA
+                RXA :> valuea;
+                switch(statea){
+                    case 10:
+                        if(valuea == 0){//valid start bit detected
+                            statea = 9;
+                            timea += UARTdelay/3;
+                        }else{
+                            timea += UARTdelay/3;
+                        }
+                        break;
+                    case 9:
+                        if(valuea == 0){//start bit validated
+                            statea = 8;
+                            timea += UARTdelay;
+                        }else{
+                            statea = 10;
+                            timea += UARTdelay/3;
+                        }
+                        break;
+#pragma fallthrough
+                    case 8:
+                        bytea = 0;
+                    case 7:
+                    case 6:
+                    case 5:
+                    case 4:
+                    case 3:
+                    case 2:
+                    case 1:
+                        bytea <<1;
+                        bytea += valuea;
+                        statea--;
+                        timea+=UARTdelay;
+                        break;
+                    case 0:
+                        if(valuea == 1){//stop bit validated
+                            statea = 10;
+                            timea += UARTdelay/3;
+                            //rxa <: bytea;
+                            if(NEXT(enda) != starta) {
+                                buffera[enda] = bytea;
+                                printf("bufffera[%d] : %d\n", enda, buffera[enda]);
+                                enda = NEXT(enda); // advance the end
+                                printf("enda: %d\n", enda);
+                            }
+                        }else{
+                            statea = 10;
+                            timea += UARTdelay/3;
+                        }
+                        break;
+                }
+                break;
 
-    //uart_init(1e6); // init the baud rate - not needed (default)
+            case timerb when timerafter(timeb) :> timeb:
+                RXB :> valueb;
+                switch(stateb){
+                    case 10:
+                        if(valueb == 0){//valid start bit detected
+                            stateb = 9;
+                            timeb += UARTdelay/3;
+                        }else{
+                            timeb += UARTdelay/3;
+                        }
+                        break;
+                    case 9:
+                        if(valueb == 0){//start bit validated
+                            stateb = 8;
+                            timeb += UARTdelay;
+                        }else{
+                            stateb = 10;
+                            timeb += UARTdelay/3;
+                        }
+                        break;
+#pragma fallthrough
+                    case 8:
+                        byteb = 0;
+                    case 7:
+                    case 6:
+                    case 5:
+                    case 4:
+                    case 3:
+                    case 2:
+                    case 1:
+                        byteb <<1;
+                        byteb += valueb;
+                        stateb--;
+                        timeb+=UARTdelay;
+                        break;
+                    case 0:
+                        if(valueb == 1){//stop bit validated
+                            stateb = 10;
+                            timeb += UARTdelay/3;
+                            //rxb <: byteb;
+                            if(NEXT(endb) != startb) {
+                                bufferb[endb] = byteb;
+                                printf("buffferb[%d] : %d\n", endb, bufferb[endb]);
+                                endb = NEXT(endb);
+                                printf("endb: %d\n", endb);
+                            }
+                        }else{
+                            stateb = 10;
+                            timeb += UARTdelay/3;
+                        }
+                        break;
+                }
+                break;
+            case reader.clear():
+                starta = enda = 0;
+                startb = endb = 0;
+                break;
 
-    while(1) {
-        // stop movement!
-        // turn on laser!
-        // capture the dots
-        tx(TX, CAPTURE_DOTS);
-        // turn off laser!
-        tx(TX, CAPTURE_NORM); // does math imidiatly
+                // camera a
+            case reader.avalible_a() -> int return_val:
+                if(starta != enda)
+                    return_val = 1;
+                else
+                    return_val = 0;
+                break;
+            case reader.getc_a() -> int c:
+                if(starta != enda) {
+                    c = buffera[starta];
+                    starta = NEXT(starta);
+                    printf("getc_a: %d\n", c);
+                } else {
+                    c = -1;
+                }
+                break;
 
-        // clear out the point buffers - time for math to be done
-        for(int i = 0; i < POINT_BUFFER_LENGTH; i++) {
-            for(int j = 0; j < 2; j++) {
-                points_a[i][j] = 0;
-                points_b[i][j] = 0;
-            }
+                // camera b
+            case reader.avalible_b() -> int return_val:
+                if(startb != endb)
+                    return_val = 1;
+                else
+                    return_val = 0;
+                break;
+            case reader.getc_b() -> int c:
+                if(startb != endb) {
+                    c = bufferb[startb];
+                    startb = NEXT(startb);
+                    printf("getc_b: %d\n", c);
+                } else {
+                    c = -1;
+                }
+                break;
         }
-        for(int i = 0; i < MAX_COLUMNS; i++)
-            col_idx[i] = 0;
-        for(int i = 0; i < MAX_ROWS; i++)
-            row_idx[i] = 0;
-
-        tx(TX, READ_A); // camera a send your data
-        n_points_a = rx(RX);
-        n_points_a |= rx(RX) << 8;
-        n_columns_a = rx(RX);
-        n_columns_a |= rx(RX) << 8;
-        for(int i = 0; i < n_points_a; i++) {
-            for(int j = 0; j < 2; j++) {
-                points_a[i][j] = rx(RX);
-                points_a[i][j] |= rx(RX) << 8;;
-            }
-        }
-        for(int i = 0; i < n_columns_a; i++) {
-            col_idx[i] = rx(RX);
-        }
-
-        tx(TX, READ_B); // camera b send your data
-        n_points_b = rx(RX);
-        n_points_b |= rx(RX) << 8;
-        n_rows_b = rx(RX);
-        n_rows_b |= rx(RX) << 8;
-        for(int i = 0; i < n_points_b; i++) {
-            for(int j = 0; j < 2; j++) {
-                points_b[i][j] = rx(RX);
-                points_b[i][j] |= rx(RX) << 8;;
-            }
-        }
-        for(int i = 0; i < n_rows_b; i++) {
-            row_idx[i] = rx(RX);
-        }
-
-        printf("A: points: %d, columns: %d\n", n_points_a, n_columns_a);
-        printf("B: points: %d, row: %d\n", n_points_b, n_rows_b);
-        delay(100e6);
     }
 }
-*/
 
 int main(void) {
-    streaming chan rxa, rxb;
+    interface uart_int rx_int;
     par {
-        on tile[0]:button_control(rxa, rxb);
-        on tile[0]:uart_rx_thread(rxa, RXA);
-        on tile[0]:uart_rx_thread(rxb, RXB);
+        on tile[0]:button_control(rx_int);
+        on tile[0]:multiRX(rx_int,RXA,RXB);
     }
     return 0;
 }
