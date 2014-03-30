@@ -21,6 +21,8 @@ interface uart_int {
 #define RX_BUF_SIZE          200
 #define NEXT(x)              ((x+1)%RX_BUF_SIZE)
 
+//#define DEBUG
+
 void extern delay(int delay);
 void uart_init(int baud);
 void tx(out port TX, unsigned char byte);
