@@ -42,7 +42,7 @@ void delay(int delay){
 #define MAX_COLUMNS           30
 #define MAX_ROWS              30
 
-#define RX_BUF_SIZE          100
+#define RX_BUF_SIZE          500
 #define NEXT(x)              ((x+1)%RX_BUF_SIZE)
 
 #define START           0b00
@@ -59,73 +59,45 @@ interface uart_int {
     void clear();
     int avalible_a();
     int avalible_b();
-    int getc_a();
-    int getc_b();
+    char getc_a();
+    char getc_b();
+    int geti_a();
+    int geti_b();
 };
 
-void clearRXchannels(chanend rxa, chanend rxb){
-    int value;
-    select{
-        case rxa :> value:
-            break;
-        default:
-            break;
-    }
-    select{
-        case rxb :> value:
-            break;
-        default:
-            break;
-    }
-}
-
-void wait_for_continue(chanend rxa, chanend rxb) {
-    int ca = 1,
-        cb = 1;
-
-    while(ca != 0 && cb != 0) {
-        select {
-            case rxa :> ca:
-                break;
-            case rxb :> cb:
-                break;
-            default:
-                break;
+int watchdog_timer(int init, int d) {
+    static int base;
+    int time;
+    const int timeout = 2e8; // 2 second timeout
+    timer t;
+    delay(d);
+    if (init) {
+        t :> base;
+    } else {
+        t :> time;
+        if((time - base) > timeout) {
+            return 1;
         }
     }
-}
-
-int uart_getc(chanend rx) {
-    int c;
-    rx :> c;
-    return c;
-}
-
-int uart_geti(chanend rx) {
-    int c, r;
-    rx :> c;
-    r = c;
-    rx :> c;
-    r |= c << 8;
-    return r;
+    return 0;
 }
 
 void button_control(interface uart_int client rx) {
-//    int num_points_a;
-//    int num_points_b;
-//    int num_columns_a;
-//    int num_rows_b;
-//
-//    int points_a[POINT_BUFFER_LENGTH][2];
-//    int points_b[POINT_BUFFER_LENGTH][2];
-//    int col_idx[MAX_COLUMNS];
-//    int row_idx[MAX_ROWS];
+    int num_points_a;
+    int num_points_b;
+    int num_columns_a;
+    int num_rows_b;
+
+    int points_a[POINT_BUFFER_LENGTH][2];
+    int points_b[POINT_BUFFER_LENGTH][2];
+    int col_idx[MAX_COLUMNS];
+    int row_idx[MAX_ROWS];
 
     LEDS <: 0;
     while(1) {
         select {
         case BUTTON1 when pinseq(0) :> void:
-            //delay(20e6); // debounce
+            watchdog_timer(1,0); // init watchdog
 #ifdef DEBUG
             printf("Button 1 pressed\n");
 #endif
@@ -133,39 +105,62 @@ void button_control(interface uart_int client rx) {
             LASER <: 1;
             rx.clear();
             tx(TX, CAPTURE_DOTS);
-            while(rx.getc_a() != 0) delay(1e6);
-            while(rx.getc_b() != 0) delay(1e6);
+            while(rx.getc_a() != 0)
+                if(watchdog_timer(0,1e6))
+                    break;
+            while(rx.getc_b() != 0)
+                if(watchdog_timer(0,1e6))
+                    break;
             LASER <: 0;
             BUTTON1 when pinseq(1) :> void;
-            delay(20e6); // debounce
+
+#ifdef DEBUG
             printf("took the forst picture\n");
+#endif
             break;
 
 
         case BUTTON2 when pinseq(0) :> void:
-            //delay(20e6); // debounce
+            watchdog_timer(1,0); // init watchdog
 #ifdef DEBUG
             printf("Button 2 pressed\n");
 #endif
             rx.clear();
             tx(TX, CAPTURE_NORM);
-            while(!rx.avalible_a() && rx.getc_a() != 0);
-            while(!rx.avalible_b() && rx.getc_b() != 0);
+            while(rx.getc_a() != 0)
+                if(watchdog_timer(0,1e6))
+                    break;
+            while(rx.getc_b() != 0)
+                if(watchdog_timer(0,1e6))
+                    break;
 #ifdef DEBUG
             printf("Captured no dots...\n");
 #endif
-            /*
-            clearRXchannels(rxa,rxb);
+
+            rx.clear();
             tx(TX, READ_A);
-            num_points_a = uart_geti(rxa);
-            num_columns_a = uart_geti(rxa);
+            while(rx.avalible_a() < 4)
+                if(watchdog_timer(0,1e6))
+                    break;
+            num_points_a = rx.geti_a();
+            num_columns_a = rx.geti_a();
+
+#ifdef DEBUG
+            printf("got the number of points and columns\n");
+#endif
             // get the points
             for(int i = 0; i < num_points_a && i < POINT_BUFFER_LENGTH; i++) {
-                points_a[i][0] = uart_geti(rxa);
-                points_a[i][1] = uart_geti(rxa);
+                while(rx.avalible_a() < 4)
+                    if(watchdog_timer(0,1e6))
+                        break;
+                points_a[i][0] = rx.geti_a();
+                points_a[i][1] = rx.geti_a();
             }
             for(int i = 0; i < num_columns_a && i < MAX_COLUMNS; i++) {
-                col_idx[i] = uart_geti(rxa);
+                while(rx.avalible_a() < 2)
+                    if(watchdog_timer(0,1e6))
+                        break;
+                col_idx[i] = rx.geti_a();
             }
             LEDS <: 1;
 #ifdef DEBUG
@@ -176,15 +171,25 @@ void button_control(interface uart_int client rx) {
 #endif
 
             tx(TX, READ_B);
-            num_points_b = uart_geti(rxb);
-            num_rows_b = uart_geti(rxb);
+            while(rx.avalible_b() < 4)
+                if(watchdog_timer(0,1e6))
+                    break;
+            num_points_b = rx.geti_b();
+            num_rows_b = rx.geti_b();
+
             // get the points
             for(int i = 0; i < num_points_b && i < POINT_BUFFER_LENGTH; i++) {
-                points_b[i][0] = uart_geti(rxb);
-                points_b[i][1] = uart_geti(rxb);
+                while(rx.avalible_b() < 4)
+                    if(watchdog_timer(0,1e6))
+                        break;
+                points_b[i][0] = rx.geti_b();
+                points_b[i][1] = rx.geti_b();
             }
             for(int i = 0; i < num_rows_b && i < MAX_ROWS; i++) {
-                row_idx[i] = uart_geti(rxb);
+                while(rx.avalible_b() < 2)
+                    if(watchdog_timer(0,1e6))
+                        break;
+                row_idx[i] = rx.geti_b();
             }
             LEDS <: 2;
 #ifdef DEBUG
@@ -193,7 +198,6 @@ void button_control(interface uart_int client rx) {
                 printf("(%d, %d)\n", points_b[i][0], points_b[i][1]);
             }
 #endif
-            */
             BUTTON2 when pinseq(1) :> void;
 
             break;
@@ -248,25 +252,34 @@ void pwm_laser_thread(interface laser_int server from_button) {
     }
 }
 
+int fifo_length(int start, int end) {
+    if(end == start) {
+        return 0;
+    } else if(end > start) {
+        return end - start;
+    }
+    return (RX_BUF_SIZE - start) + end;
+}
+
 void multiRX(interface uart_int server reader, in port RXA, in port RXB){
     timer timera;
     timer timerb;
     int timea;
     int timeb;
-    int valuea;
-    int valueb;
-    int bytea;
-    int byteb;
+    char valuea;
+    char valueb;
+    char bytea;
+    char byteb;
     int statea = 10; //10=wating for start bit, 9=checking valid start bit, (1-8)=# of bits left, 0=checking end bit
     int stateb = 10;
     int UARTdelay = 10417;//baud rate = 9600
     timera :> timea;
     timerb :> timeb;
 
-    int buffera[RX_BUF_SIZE];
+    char buffera[RX_BUF_SIZE];
     int starta = 0;
     int enda = 0;
-    int bufferb[RX_BUF_SIZE];
+    char bufferb[RX_BUF_SIZE];
     int startb = 0;
     int endb = 0;
 
@@ -302,8 +315,7 @@ void multiRX(interface uart_int server reader, in port RXA, in port RXB){
                     case 3:
                     case 2:
                     case 1:
-                        bytea <<1;
-                        bytea += valuea;
+                        bytea |= (valuea << (8 - statea));
                         statea--;
                         timea+=UARTdelay;
                         break;
@@ -314,9 +326,9 @@ void multiRX(interface uart_int server reader, in port RXA, in port RXB){
                             //rxa <: bytea;
                             if(NEXT(enda) != starta) {
                                 buffera[enda] = bytea;
-                                printf("bufffera[%d] : %d\n", enda, buffera[enda]);
+                                printf("bytea: %c - %d\n", bytea, bytea);
+                                LEDS <: bytea;
                                 enda = NEXT(enda); // advance the end
-                                printf("enda: %d\n", enda);
                             }
                         }else{
                             statea = 10;
@@ -356,8 +368,7 @@ void multiRX(interface uart_int server reader, in port RXA, in port RXB){
                     case 3:
                     case 2:
                     case 1:
-                        byteb <<1;
-                        byteb += valueb;
+                        byteb |= (valueb << (8 - stateb));
                         stateb--;
                         timeb+=UARTdelay;
                         break;
@@ -368,9 +379,8 @@ void multiRX(interface uart_int server reader, in port RXA, in port RXB){
                             //rxb <: byteb;
                             if(NEXT(endb) != startb) {
                                 bufferb[endb] = byteb;
-                                printf("buffferb[%d] : %d\n", endb, bufferb[endb]);
+                                //printf("byteb: %c - %d\n", byteb, byteb);
                                 endb = NEXT(endb);
-                                printf("endb: %d\n", endb);
                             }
                         }else{
                             stateb = 10;
@@ -379,6 +389,8 @@ void multiRX(interface uart_int server reader, in port RXA, in port RXB){
                         break;
                 }
                 break;
+
+
             case reader.clear():
                 starta = enda = 0;
                 startb = endb = 0;
@@ -386,46 +398,80 @@ void multiRX(interface uart_int server reader, in port RXA, in port RXB){
 
                 // camera a
             case reader.avalible_a() -> int return_val:
-                if(starta != enda)
-                    return_val = 1;
-                else
+                if(starta != enda) {
+                    return_val = fifo_length(starta, enda);
+                } else {
                     return_val = 0;
+                }
                 break;
-            case reader.getc_a() -> int c:
+            case reader.getc_a() -> char c:
                 if(starta != enda) {
                     c = buffera[starta];
                     starta = NEXT(starta);
-                    printf("getc_a: %d\n", c);
                 } else {
                     c = -1;
+                }
+                break;
+            case reader.geti_a() -> int i:
+                if(fifo_length(starta, enda) >= 2) {
+                    i = buffera[starta];
+                    starta = NEXT(starta);
+                    i |= buffera[starta] << 8;
+                    starta = NEXT(starta);
+                } else {
+                    i = -1;
                 }
                 break;
 
                 // camera b
             case reader.avalible_b() -> int return_val:
-                if(startb != endb)
-                    return_val = 1;
-                else
+                if(startb != endb) {
+                    return_val = fifo_length(startb, endb);
+                } else {
                     return_val = 0;
+                }
                 break;
-            case reader.getc_b() -> int c:
+            case reader.getc_b() -> char c:
                 if(startb != endb) {
                     c = bufferb[startb];
                     startb = NEXT(startb);
-                    printf("getc_b: %d\n", c);
                 } else {
                     c = -1;
+                }
+                break;
+            case reader.geti_b() -> int i:
+                if(fifo_length(startb, endb) >= 2) {
+                    i = bufferb[startb];
+                    startb = NEXT(startb);
+                    i |= bufferb[startb] << 8;
+                    startb = NEXT(startb);
+                } else {
+                    i = -1;
                 }
                 break;
         }
     }
 }
 
+void uart_test(interface uart_int client rx) {
+    rx.clear();
+    while(1) {
+        if(rx.avalible_a() >= 10) {
+            for(int i = 0; i < 10; i++) {
+                char c = rx.getc_a();
+                printf("%c (%d),",c,(int)c);
+            }
+            printf("\n");
+        }
+        delay(1e8);
+    }
+}
+
 int main(void) {
     interface uart_int rx_int;
     par {
-        on tile[0]:button_control(rx_int);
-        on tile[0]:multiRX(rx_int,RXA,RXB);
+        on tile[0]:uart_test(rx_int);
+        on tile[0]:multiRX(rx_int,DEBUGRX,RXB);
     }
     return 0;
 }
