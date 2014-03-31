@@ -187,13 +187,13 @@ void button_control(interface uart_int client rx) {
 #endif
             BUTTON2 when pinseq(1) :> void;
             printf("num_points_b: %d, num_rows: %d\n", num_points_b, num_rows_b);
-            for(int i = 0; i < num_points_b && i < POINT_BUFFER_LENGTH; i++) {
-                printf("(%d, %d)\n", points_b[i][0], points_b[i][1]);
-            }
+//            for(int i = 0; i < num_points_b && i < POINT_BUFFER_LENGTH; i++) {
+//                printf("(%d, %d)\n", points_b[i][0], points_b[i][1]);
+//            }
             printf("num_points_a: %d, num_columns: %d\n", num_points_a, num_columns_a);
-            for(int i = 0; i < num_points_a && i < POINT_BUFFER_LENGTH; i++) {
-                printf("(%d, %d)\n", points_a[i][0], points_a[i][1]);
-            }
+//            for(int i = 0; i < num_points_a && i < POINT_BUFFER_LENGTH; i++) {
+//                printf("(%d, %d)\n", points_a[i][0], points_a[i][1]);
+//            }
             break;
         }
     }
