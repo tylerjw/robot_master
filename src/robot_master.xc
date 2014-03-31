@@ -64,9 +64,6 @@ int watchdog_timer(int init, int d) {
     } else {
         t :> time;
         if(end > timeout) {
-#ifdef DEBUG
-            printf("watchdog timed out!\n");
-#endif
             return 1;
         }
     }
@@ -88,36 +85,24 @@ void button_control(interface uart_int client rx) {
     while(1) {
         select {
         case BUTTON1 when pinseq(0) :> void:
-            watchdog_timer(1,0); // init watchdog
-#ifdef DEBUG
-            printf("Button 1 pressed\n");
-#endif
+            //watchdog_timer(1,0); // init watchdog
             LASER <: 1;
             rx.clear();
             tx(TX, CAPTURE_DOTS);
-            while(rx.getc_a() != 0) delay(1e6);
+            while(rx.getc_a() != 0) delay(1e6); // TODO: implement some sort of watchdog timer
             while(rx.getc_b() != 0) delay(1e6);
             LASER <: 0;
             BUTTON1 when pinseq(1) :> void;
 
-#ifdef DEBUG
-            printf("took the forst picture\n");
-#endif
             break;
 
 
         case BUTTON2 when pinseq(0) :> void:
-            watchdog_timer(1,0); // init watchdog
-#ifdef DEBUG
-            printf("Button 2 pressed\n");
-#endif
+            //watchdog_timer(1,0); // init watchdog
             rx.clear();
             tx(TX, CAPTURE_NORM);
             while(rx.getc_a() != 0) delay(1e6);
             while(rx.getc_b() != 0) delay(1e6);
-#ifdef DEBUG
-            printf("Captured no dots...\n");
-#endif
 
             rx.clear();
             tx(TX, READ_A);
@@ -125,29 +110,12 @@ void button_control(interface uart_int client rx) {
             num_points_a = rx.geti_a();
             num_columns_a = rx.geti_a();
 
-#ifdef DEBUG
-            printf("num_points_a: %d, num_columns: %d\n", num_points_a, num_columns_a);
-#endif
             // get the points
             int i = 0;
 
-            while(rx.avalible_a() < 4*num_points_a) {
-                delay(10e6);
-                i++;
-                if(i > 500) {
-                    printf("rx.avalible_a(): %d\n", rx.avalible_a());
-                    while(rx.avalible_a()) {
-                        printf("%d, ", rx.getc_a());
-                    }
-                    printf("\n");
-                    break;
-                }
-            }
+            while(rx.avalible_a() < 4*num_points_a) delay(10e6);
             LEDS <: 1;
 
-#ifdef DEBUG
-            printf("reading points from buffer\n");
-#endif
             for(int i = 0; i < num_points_a && i < POINT_BUFFER_LENGTH; i++) {
                 points_a[i][0] = rx.geti_a();
                 points_a[i][1] = rx.geti_a();
@@ -157,11 +125,6 @@ void button_control(interface uart_int client rx) {
                 col_idx[i] = rx.geti_a();
             }
             LEDS <: 2;
-#ifdef DEBUG
-            for(int i = 0; i < num_points_a && i < POINT_BUFFER_LENGTH; i++) {
-                printf("(%d, %d)\n", points_a[i][0], points_a[i][1]);
-            }
-#endif
 
             tx(TX, READ_B);
             while(rx.avalible_b() < 4) delay(1e6);
@@ -179,12 +142,7 @@ void button_control(interface uart_int client rx) {
                 row_idx[i] = rx.geti_b();
             }
             LEDS <: 3;
-#ifdef DEBUG
-            printf("num_points_b: %d, num_rows: %d\n", num_points_b, num_rows_b);
-            for(int i = 0; i < num_points_b && i < POINT_BUFFER_LENGTH; i++) {
-                printf("(%d, %d)\n", points_b[i][0], points_b[i][1]);
-            }
-#endif
+
             BUTTON2 when pinseq(1) :> void;
             printf("num_points_b: %d, num_rows: %d\n", num_points_b, num_rows_b);
 //            for(int i = 0; i < num_points_b && i < POINT_BUFFER_LENGTH; i++) {

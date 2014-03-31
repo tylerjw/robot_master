@@ -146,9 +146,6 @@ void multiRX(interface uart_int server reader, in port RXA, in port RXB) {
                             //rxa <: bytea;
                             if(NEXT(enda) != starta) {
                                 buffera[enda] = bytea;
-#ifdef DEBUG
-                                printf("bytea: %c - %d\n", bytea, bytea);
-#endif
                                 enda = NEXT(enda); // advance the end
                             }
                         }else{
@@ -200,9 +197,6 @@ void multiRX(interface uart_int server reader, in port RXA, in port RXB) {
                             //rxb <: byteb;
                             if(NEXT(endb) != startb) {
                                 bufferb[endb] = byteb;
-#ifdef DEBUG
-                                printf("byteb: %c - %d\n", byteb, byteb);
-#endif
                                 endb = NEXT(endb);
                             }
                         }else{
