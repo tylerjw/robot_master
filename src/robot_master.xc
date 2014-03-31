@@ -224,8 +224,10 @@ void button_control(interface uart_int client rx) {
                         }
                     }
                     // tested all the points in this row and column combination
-                    matching_point[shortest_a] = shortest_b;
-                    distances[shortest_a] = shortest_distance;
+                    if(shortest_distance < 2) {
+                        matching_point[shortest_a] = shortest_b;
+                        distances[shortest_a] = shortest_distance;
+                    }
                 }
             }
 
