@@ -8,6 +8,8 @@
 #ifndef UART_H_
 #define UART_H_
 
+extern out port DEBUGTX;
+
 interface uart_int {
     void clear();
     int avalible_a();
@@ -16,6 +18,12 @@ interface uart_int {
     char getc_b();
     int geti_a();
     int geti_b();
+};
+
+interface arduino_int {
+    void clear();
+    int avalible();
+    int geti();
 };
 
 #define RX_BUF_SIZE          2000
@@ -30,6 +38,6 @@ void tx_str(out port TX, char *str);
 int rx(in port RX);
 
 // handle two uarts using the uart_interface
-void multiRX(interface uart_int server reader, in port RXA, in port RXB);
+void multiRX(interface uart_int server reader, interface arduino_int server arduino, in port RXA, in port RXB, in port ARDUINO);
 
 #endif /* UART_H_ */

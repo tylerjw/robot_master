@@ -81,30 +81,47 @@ int fifo_length(int start, int end) {
     return (RX_BUF_SIZE - start) + end;
 }
 
-void multiRX(interface uart_int server reader, in port RXA, in port RXB) {
+void multiRX(interface uart_int server reader, interface arduino_int server arduino, in port RXA, in port RXB, in port ARDUINO) {
     timer timera;
     timer timerb;
+    timer arduino_timer;
     int timea;
     int timeb;
+    int arduino_time;
     char valuea;
     char valueb;
+    char arduino_value;
     char bytea;
     char byteb;
+    char arduino_byte;
     int statea = 10; //10=wating for start bit, 9=checking valid start bit, (1-8)=# of bits left, 0=checking end bit
     int stateb = 10;
+    int arduino_state = 10;
     int UARTdelay = UARTDELAY; //baud rate = 9600
+    int arduinoUARTdelay = UARTDELAY; // baud rate of 9600
+
     timera :> timea;
     timerb :> timeb;
+    arduino_timer :> arduino_time;
 
     char buffera[RX_BUF_SIZE];
     int starta = 0;
     int enda = 0;
+
     char bufferb[RX_BUF_SIZE];
     int startb = 0;
     int endb = 0;
 
+    char arduino_buffer[RX_BUF_SIZE];
+    int arduino_start = 0;
+    int arduino_end = 0;
+
+    char buffer[80];
+
     while(1){
         select{
+
+            // CAMERA A ////////////////////////////////////////////////////////////////////
             case timera when timerafter(timea) :> timea://time to poll the uartA
                 RXA :> valuea;
                 switch(statea){
@@ -156,6 +173,7 @@ void multiRX(interface uart_int server reader, in port RXA, in port RXB) {
                 }
                 break;
 
+            // CAMERA B ////////////////////////////////////////////////////////
             case timerb when timerafter(timeb) :> timeb:
                 RXB :> valueb;
                 switch(stateb){
@@ -207,6 +225,59 @@ void multiRX(interface uart_int server reader, in port RXA, in port RXB) {
                 }
                 break;
 
+            // ARDUINO ////////////////////////////////////////////////////////
+            case arduino_timer when timerafter(arduino_time) :> arduino_time:
+                    ARDUINO :> arduino_value;
+                    switch(arduino_state){
+                        case 10:
+                            if(arduino_value == 0){ //valid start bit detected
+                                arduino_state = 9;
+                                arduino_time += arduinoUARTdelay/3;
+                            }else{
+                                arduino_time += arduinoUARTdelay/3;
+                            }
+                            break;
+                        case 9:
+                            if(arduino_value == 0){  //start bit validated
+                                arduino_state = 8;
+                                arduino_time += arduinoUARTdelay;
+                            }else{
+                                arduino_state = 10;
+                                arduino_time += arduinoUARTdelay/3;
+                            }
+                            break;
+    #pragma fallthrough
+                        case 8:
+                            arduino_byte = 0;
+                        case 7:
+                        case 6:
+                        case 5:
+                        case 4:
+                        case 3:
+                        case 2:
+                        case 1:
+                            arduino_byte |= (arduino_value << (8 - arduino_state));
+                            arduino_state--;
+                            arduino_time+=arduinoUARTdelay;
+                            break;
+                        case 0:
+                            if(arduino_value == 1){//stop bit validated
+                                arduino_state = 10;
+                                arduino_time += arduinoUARTdelay/3;
+                                if(NEXT(arduino_end) != arduino_start) {
+                                    arduino_buffer[arduino_end] = arduino_byte;
+                                    arduino_end = NEXT(arduino_end);
+                                    //printf("byte: %d\n", arduino_byte);
+                                }
+                            }else{
+                                arduino_state = 10;
+                                arduino_time += arduinoUARTdelay/3;
+                            }
+                            break;
+                    }
+                    break;
+
+                // THE INTERFACES ! //////////////////////////////////////////////////
 
             case reader.clear():
                 starta = enda = 0;
@@ -262,6 +333,40 @@ void multiRX(interface uart_int server reader, in port RXA, in port RXB) {
                     startb = NEXT(startb);
                     i |= bufferb[startb] << 8;
                     startb = NEXT(startb);
+                } else {
+                    i = -1;
+                }
+                break;
+
+            // arduino interface
+            case arduino.clear():
+                arduino_start = arduino_end;
+                break;
+            case arduino.avalible() -> int return_val:
+                if(arduino_start != arduino_end) {
+                    return_val = fifo_length(arduino_start, arduino_end);
+                } else {
+                    return_val = 0;
+                }
+                break;
+            case arduino.geti() -> int i:
+                if(fifo_length(arduino_start, arduino_end) >= 2) {
+                    i = arduino_buffer[arduino_start];
+                    sprintf(buffer, "0 0x%X\r\n", arduino_buffer[arduino_start]);
+                    tx_str(DEBUGTX, buffer);
+                    arduino_start = NEXT(arduino_start);
+                    i |= arduino_buffer[arduino_start] << 8;
+                    sprintf(buffer, "1 0x%X\r\n", (arduino_buffer[arduino_start] << 8));
+                    tx_str(DEBUGTX, buffer);
+                    arduino_start = NEXT(arduino_start);
+                    sprintf(buffer, "b %d\r\n", i);
+                    tx_str(DEBUGTX, buffer);
+                    if(i & 0b1000000000000000) {
+                        // negative
+                        i |= (0b1111111111111111<<16); // make it all 1s in the front (2s complement form negative)
+                    }
+                    sprintf(buffer, "a %d\r\n", i);
+                    tx_str(DEBUGTX, buffer);
                 } else {
                     i = -1;
                 }

@@ -13,6 +13,7 @@
 #include <LineMatcher.h>
 
 
+
 out port LEDS = on tile[0]:XS1_PORT_4F;
 
 in port BUTTON1 = on tile[0]:XS1_PORT_1K;
@@ -21,6 +22,8 @@ in port BUTTON2 = on tile[0]:XS1_PORT_1L;
 in port RXB = on tile[0]:XS1_PORT_1E;
 in port RXA = on tile[0]:XS1_PORT_1F;
 out port TX = on tile[0]:XS1_PORT_4C;
+in port ARDUINO_RX = on tile[0]:XS1_PORT_1G;
+out port ARDUINO_INT = on tile[0]:XS1_PORT_1H;
 
 out port DEBUGTX = on tile[0]:XS1_PORT_1D;
 in port DEBUGRX = on tile[0]:XS1_PORT_1C;
@@ -444,12 +447,15 @@ void debug_tx_test() {
 
 int extern line_matcher_test_thread();
 void extern laser_test_thread(void);
+void arduino_thread(interface arduino_int client ard_rx, out port beacon);
 
 int main(void) {
     interface uart_int rx_int;
+    interface arduino_int arduino;
     par {
-        on tile[0]:button_control(rx_int);
-        on tile[0]:multiRX(rx_int,RXA,RXB);
+        //on tile[0]:button_control(rx_int);
+        on tile[0]:multiRX(rx_int,arduino,RXA,RXB,ARDUINO_RX);
+        on tile[0]:arduino_thread(arduino, ARDUINO_INT);
 //        on tile[0]:line_matcher_test_thread();
 //        on tile[0]:laser_test_thread();
 //        on tile[0]:debug_tx_test();
