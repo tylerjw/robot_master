@@ -18,7 +18,7 @@ interface uart_int {
     int geti_b();
 };
 
-#define RX_BUF_SIZE          200
+#define RX_BUF_SIZE          2000
 #define NEXT(x)              ((x+1)%RX_BUF_SIZE)
 
 //#define DEBUG

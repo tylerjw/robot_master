@@ -122,7 +122,8 @@ long long vector_togetherness(vector* a, vector* b, testResult* result){
     vector_cross(a,b,&result->n);
 
     //get togetherness, which tests if two vectors meet in front of the camera or behind the camera (meaning they point away from each other)
-    result->togetherness = ((long long)c1 * (long long)result->n.y - (long long)c2 * ((long long)result->n.x - (long long)CAMERA_A_X) - (long long) CAMERA_A_Y);
+    //result->togetherness = ((long long)c1 * (long long)result->n.y - (long long)c2 * ((long long)result->n.x - (long long)CAMERA_A_X) - (long long) CAMERA_A_Y);
+    result->togetherness = result->n.z;
 //  printf("togetherness = %lld\n", result->togetherness);
 
     return result->togetherness;

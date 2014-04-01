@@ -92,7 +92,7 @@ void multiRX(interface uart_int server reader, in port RXA, in port RXB) {
     char byteb;
     int statea = 10; //10=wating for start bit, 9=checking valid start bit, (1-8)=# of bits left, 0=checking end bit
     int stateb = 10;
-    int UARTdelay = 10417; //baud rate = 9600
+    int UARTdelay = UARTDELAY; //baud rate = 9600
     timera :> timea;
     timerb :> timeb;
 

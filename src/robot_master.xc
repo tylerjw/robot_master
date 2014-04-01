@@ -47,7 +47,7 @@ void delay(int delay){
 #define START           0b00
 #define DONE            0b11
 
-#define DISTANCE_THRESHOLD      5
+#define DISTANCE_THRESHOLD      2
 
 //#define DEBUG
 
@@ -61,12 +61,14 @@ int time_after(timer t, int start, int max) {
     t :> end;
     if(end > start) {
         if((start - end) > max) {
-            printf("timeout!\n");
+            //printf("timeout!\n");
+            //LEDS <: 0b1111;
             return -1;
         }
     } else {
         if((2147483647 - start) + end > max) {
-            printf("overflow timeout\n");
+            //printf("overflow timeout\n");
+            //LEDS <: 0b0111;
             return -1;
         }
     }
@@ -78,6 +80,8 @@ void button_control(interface uart_int client rx) {
     int num_points_b;
     int num_columns_a;
     int num_rows_b;
+
+    char buffer[80];
 
     int points_a[POINT_BUFFER_LENGTH][2];
     int points_b[POINT_BUFFER_LENGTH][2];
@@ -97,12 +101,12 @@ void button_control(interface uart_int client rx) {
     int error = 0;
     int wait_delay = 1e4;
 
-    printf("ready\n");
+    //printf("ready\n");
 
     LEDS <: 0;
     while(1) {
         if(error) {
-            printf("error!\n");
+            //printf("error!\n");
         }
         error = 0;
         t :> start;
@@ -133,7 +137,7 @@ void button_control(interface uart_int client rx) {
         case BUTTON2 when pinseq(0) :> void:
             rx.clear();
             tx(TX, CAPTURE_NORM);
-            while(!error && rx.getc_a() != 0) {
+            while(!error && rx.getc_a() != 1) {
                 delay(wait_delay);
                 if(time_after(t,start,timeout)) {
                     error = 1;
@@ -143,7 +147,7 @@ void button_control(interface uart_int client rx) {
             if(error) {
                 break;
             }
-            while(!error && rx.getc_b() != 0) {
+            while(!error && rx.getc_b() != 2) {
                 delay(wait_delay);
                 if(time_after(t,start,timeout)) {
                     error = 1;
@@ -153,6 +157,9 @@ void button_control(interface uart_int client rx) {
             if(error) {
                 break;
             }
+
+            //printf("took the no dots image\n");
+            delay(100e6);
 
             t :> start; // reset timeout
 
@@ -171,6 +178,12 @@ void button_control(interface uart_int client rx) {
 
             num_points_a = rx.geti_a();
             num_columns_a = rx.geti_a();
+            sprintf(buffer, "%d, %d\r\n", num_points_a, num_columns_a);
+            for(int i = 0; i < strlen(buffer); i++)
+                tx(DEBUGTX, buffer[i]);
+
+            //printf("num_points_a: %d, num_columns: %d\n", num_points_a, num_columns_a);
+            LEDS <: 1;
 
             // get the points
             int i = 0;
@@ -179,6 +192,10 @@ void button_control(interface uart_int client rx) {
 
             while(rx.avalible_a() < 4*num_points_a && !error) {
                 delay(wait_delay);
+                sprintf(buffer, "%d\r\n", rx.avalible_a());
+                for(int i = 0; i < strlen(buffer); i++)
+                    tx(DEBUGTX, buffer[i]);
+
                 if(time_after(t,start,timeout)) {
                     error = 1;
                     break;
@@ -187,7 +204,9 @@ void button_control(interface uart_int client rx) {
             if(error) {
                 break;
             }
-            LEDS <: 1;
+            LEDS <: 2;
+
+            //printf("ready to recieve points\n");
 
             for(int i = 0; i < num_points_a && i < POINT_BUFFER_LENGTH; i++) {
                 points_a[i][0] = rx.geti_a();
@@ -208,7 +227,9 @@ void button_control(interface uart_int client rx) {
                 }
                 col_idx[i] = rx.geti_a();
             }
-            LEDS <: 2;
+            LEDS <: 3;
+
+            //printf("read from the first camera\n");
 
             t :> start; // reset timer
 
@@ -254,7 +275,7 @@ void button_control(interface uart_int client rx) {
                 }
                 row_idx[i] = rx.geti_b();
             }
-            LEDS <: 3;
+            LEDS <: 4;
 
             if(error) {
                 break;
@@ -317,6 +338,10 @@ void button_control(interface uart_int client rx) {
                             if(matching_point[a_idx] == unfound) {
                                 testResult r;
                                 vector_togetherness(vectors_a[a_idx], vectors_b[b_idx], r);
+                                if(r.togetherness < 0) {
+                                    // points come together behind the camera
+                                    continue;
+                                }
                                 if(r.n_magnitude == 0) {
                                     // parallel - bad
                                     continue;
@@ -406,6 +431,17 @@ void pwm_laser_thread(interface laser_int server from_button) {
     }
 }
 
+void debug_tx_test() {
+    char buffer[80];
+    while(1) {
+        sprintf(buffer, "bla bla %d\r\n", (14));
+        for(int i = 0; i < strlen(buffer); i++) {
+            tx(DEBUGTX, buffer[i]);
+        }
+        delay(100e6);
+    }
+}
+
 int extern line_matcher_test_thread();
 void extern laser_test_thread(void);
 
@@ -416,6 +452,7 @@ int main(void) {
         on tile[0]:multiRX(rx_int,RXA,RXB);
 //        on tile[0]:line_matcher_test_thread();
 //        on tile[0]:laser_test_thread();
+//        on tile[0]:debug_tx_test();
     }
     return 0;
 }
