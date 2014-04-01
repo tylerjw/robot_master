@@ -4,6 +4,7 @@
  *  Created on: Mar 18, 2014
  *      Author: tylerjw
  */
+
 #include <uart.h>
 #include <platform.h>
 #include <xs1.h>
@@ -296,13 +297,15 @@ void pwm_laser_thread(interface laser_int server from_button) {
 }
 
 int extern line_matcher_test_thread();
+void extern laser_test_thread(void);
 
 int main(void) {
     interface uart_int rx_int;
     par {
-        on tile[0]:button_control(rx_int);
-        on tile[0]:multiRX(rx_int,RXA,RXB);
+//        on tile[0]:button_control(rx_int);
+//        on tile[0]:multiRX(rx_int,RXA,RXB);
 //        on tile[0]:line_matcher_test_thread();
+        on tile[0]:laser_test_thread();
     }
     return 0;
 }
