@@ -47,6 +47,8 @@ void delay(int delay){
 #define START           0b00
 #define DONE            0b11
 
+#define DISTANCE_THRESHOLD      5
+
 //#define DEBUG
 
 interface laser_int {
@@ -54,22 +56,21 @@ interface laser_int {
     void laser_off();
 };
 
-int watchdog_timer(int init, int d) {
-    static int end;
-    int time;
-    const int timeout = 3e8; // 2 second timeout
-    timer t;
-    delay(d);
-    if (init) {
-        t :> end;
-        end += timeout;
+int time_after(timer t, int start, int max) {
+    int end;
+    t :> end;
+    if(end > start) {
+        if((start - end) > max) {
+            printf("timeout!\n");
+            return -1;
+        }
     } else {
-        t :> time;
-        if(end > timeout) {
-            return 1;
+        if((2147483647 - start) + end > max) {
+            printf("overflow timeout\n");
+            return -1;
         }
     }
-    return 0;
+    return 0; // good
 }
 
 void button_control(interface uart_int client rx) {
@@ -90,83 +91,190 @@ void button_control(interface uart_int client rx) {
     int col_idx[MAX_COLUMNS]; // a
     int row_idx[MAX_ROWS]; // b
 
+    timer t;
+    int start;
+    const int timeout = 1e6;
+    int error = 0;
+    int wait_delay = 1e4;
+
+    printf("ready\n");
+
     LEDS <: 0;
     while(1) {
+        if(error) {
+            printf("error!\n");
+        }
+        error = 0;
+        t :> start;
         select {
         case BUTTON1 when pinseq(0) :> void:
-            //watchdog_timer(1,0); // init watchdog
+
             LASER <: 1; // laserbeam on!
             rx.clear();
             tx(TX, CAPTURE_DOTS);
-            while(rx.getc_a() != 0) delay(1e6); // TODO: implement some sort of watchdog timer
-            while(rx.getc_b() != 0) delay(1e6);
+            while(!error && rx.getc_a() != 0) {
+                delay(wait_delay);
+                if(time_after(t,start,timeout)) {
+                    error = 1;
+                    break;
+                }
+            }
+            while(!error && rx.getc_b() != 0) {
+                delay(wait_delay);
+                if(time_after(t,start,timeout)) {
+                    error = 1;
+                    break;
+                }
+            }
             LASER <: 0; // laserbeam off!
             BUTTON1 when pinseq(1) :> void;
-
             break;
 
-
         case BUTTON2 when pinseq(0) :> void:
-            //watchdog_timer(1,0); // init watchdog
             rx.clear();
             tx(TX, CAPTURE_NORM);
-            while(rx.getc_a() != 0) delay(1e6);
-            while(rx.getc_b() != 0) delay(1e6);
+            while(!error && rx.getc_a() != 0) {
+                delay(wait_delay);
+                if(time_after(t,start,timeout)) {
+                    error = 1;
+                    break;
+                }
+            }
+            if(error) {
+                break;
+            }
+            while(!error && rx.getc_b() != 0) {
+                delay(wait_delay);
+                if(time_after(t,start,timeout)) {
+                    error = 1;
+                    break;
+                }
+            }
+            if(error) {
+                break;
+            }
+
+            t :> start; // reset timeout
 
             rx.clear();
             tx(TX, READ_A);
-            while(rx.avalible_a() < 4) delay(1e6);
+            while(rx.avalible_a() < 4 && !error) {
+                delay(wait_delay);
+                if(time_after(t,start,timeout)) {
+                    error = 1;
+                    break;
+                }
+            }
+            if(error) {
+                break;
+            }
+
             num_points_a = rx.geti_a();
             num_columns_a = rx.geti_a();
 
             // get the points
             int i = 0;
 
-            while(rx.avalible_a() < 4*num_points_a) delay(10e6);
+            t :> start; // reset timer
+
+            while(rx.avalible_a() < 4*num_points_a && !error) {
+                delay(wait_delay);
+                if(time_after(t,start,timeout)) {
+                    error = 1;
+                    break;
+                }
+            }
+            if(error) {
+                break;
+            }
             LEDS <: 1;
 
             for(int i = 0; i < num_points_a && i < POINT_BUFFER_LENGTH; i++) {
                 points_a[i][0] = rx.geti_a();
                 points_a[i][1] = rx.geti_a();
             }
+
+            t :> start; // reset timer
             for(int i = 0; i < num_columns_a && i < MAX_COLUMNS; i++) {
-                //while(rx.avalible_a() < 2) delay(1e6);
+                while(rx.avalible_a() < 2 && !error) {
+                    delay(wait_delay);
+                    if(time_after(t,start,timeout)) {
+                        error = 1;
+                        break;
+                    }
+                }
+                if(error) {
+                    break;
+                }
                 col_idx[i] = rx.geti_a();
             }
             LEDS <: 2;
 
+            t :> start; // reset timer
+
             tx(TX, READ_B);
-            while(rx.avalible_b() < 4) delay(1e6);
+            while(rx.avalible_b() < 4 && !error) {
+                delay(wait_delay);
+                if(time_after(t,start,timeout)) {
+                    error = 1;
+                    break;
+                }
+            }
+            if(error) {
+                break;
+            }
             num_points_b = rx.geti_b();
             num_rows_b = rx.geti_b();
 
             // get the points
             for(int i = 0; i < num_points_b && i < POINT_BUFFER_LENGTH; i++) {
-                while(rx.avalible_b() < 4) delay(1e6);
+                while(rx.avalible_b() < 4 && !error) {
+                    delay(wait_delay);
+                    if(time_after(t,start,timeout)) {
+                        error = 1;
+                        break;
+                    }
+                }
+                if(error) {
+                    break;
+                }
                 points_b[i][0] = rx.geti_b();
                 points_b[i][1] = rx.geti_b();
             }
             for(int i = 0; i < num_rows_b && i < MAX_ROWS; i++) {
-                while(rx.avalible_b() < 2) delay(1e6);
+                while(rx.avalible_b() < 2 && !error) {
+                    delay(wait_delay);
+                    if(time_after(t,start,timeout)) {
+                        error = 1;
+                        break;
+                    }
+                }
+                if(error) {
+                    break;
+                }
                 row_idx[i] = rx.geti_b();
             }
             LEDS <: 3;
 
+            if(error) {
+                break;
+            }
+
             BUTTON2 when pinseq(1) :> void;
             printf("num_points_a: %d, num_columns: %d\n", num_points_a, num_columns_a);
-            for(int i = 0, j = 0; i < num_points_a && i < POINT_BUFFER_LENGTH; i++) {
-                if(i == col_idx[j] && j < MAX_COLUMNS) {
-                    printf("Column %d:\n", j++);
-                }
-                printf("(%d, %d)\n", points_a[i][0], points_a[i][1]);
-            }
+//            for(int i = 0, j = 0; i < num_points_a && i < POINT_BUFFER_LENGTH; i++) {
+//                if(i == col_idx[j] && j < MAX_COLUMNS) {
+//                    printf("Column %d:\n", j++);
+//                }
+//                printf("(%d, %d)\n", points_a[i][0], points_a[i][1]);
+//            }
             printf("num_points_b: %d, num_rows: %d\n", num_points_b, num_rows_b);
-            for(int i = 0, j = 0; i < num_points_b && i < POINT_BUFFER_LENGTH; i++) {
-                if(i == row_idx[j] && j < MAX_ROWS) {
-                    printf("Row %d:\n", j++);
-                }
-                printf("(%d, %d)\n", points_b[i][0], points_b[i][1]);
-            }
+//            for(int i = 0, j = 0; i < num_points_b && i < POINT_BUFFER_LENGTH; i++) {
+//                if(i == row_idx[j] && j < MAX_ROWS) {
+//                    printf("Row %d:\n", j++);
+//                }
+//                printf("(%d, %d)\n", points_b[i][0], points_b[i][1]);
+//            }
 
             // calibrate!
             // convert to vectors
@@ -189,6 +297,7 @@ void button_control(interface uart_int client rx) {
             // iterate through the columns and rows
             for(int c = 0; c < num_columns_a && c < MAX_COLUMNS; c++) {
                 for(int r = 0; r < num_rows_b && r < MAX_ROWS; r++) {
+                    //printf("col: %d, row: %d\n", c, r);
                     // iterate through the points in these columns and rows
                     long shortest_distance = 0;
                     int shortest_a, shortest_b;
@@ -225,7 +334,7 @@ void button_control(interface uart_int client rx) {
                         }
                     }
                     // tested all the points in this row and column combination
-                    if(shortest_distance < 2) {
+                    if(shortest_distance < DISTANCE_THRESHOLD) {
                         matching_point[shortest_a] = shortest_b;
                         distances[shortest_a] = shortest_distance;
                     }
@@ -239,14 +348,15 @@ void button_control(interface uart_int client rx) {
                 if(matching_point[p] != unfound) {
                     int bi = matching_point[p];
                     printf("(%d, %d) - (%d, %d) - %d\n", points_a[p][0], points_a[p][1], points_b[bi][0], points_b[bi][1], distances[p]);
-                    printf("(%d, %d, %d) - (%d, %d, %d)\n", vectors_a[p].x, vectors_a[p].y, vectors_a[p].z,
-                            vectors_b[bi].x, vectors_b[bi].y, vectors_b[bi].z);
+//                    printf("(%d, %d, %d) - (%d, %d, %d)\n", vectors_a[p].x, vectors_a[p].y, vectors_a[p].z,
+//                            vectors_b[bi].x, vectors_b[bi].y, vectors_b[bi].z);
                 }
             }
 
             break;
         }
     }
+    printf("something horable happened\n"); // should never get here
 }
 
 void uart_rx_thread(streaming chanend rx_chan, in port rx_port) {
@@ -302,10 +412,10 @@ void extern laser_test_thread(void);
 int main(void) {
     interface uart_int rx_int;
     par {
-//        on tile[0]:button_control(rx_int);
-//        on tile[0]:multiRX(rx_int,RXA,RXB);
+        on tile[0]:button_control(rx_int);
+        on tile[0]:multiRX(rx_int,RXA,RXB);
 //        on tile[0]:line_matcher_test_thread();
-        on tile[0]:laser_test_thread();
+//        on tile[0]:laser_test_thread();
     }
     return 0;
 }
