@@ -340,7 +340,7 @@ void multiRX(interface uart_int server reader, interface arduino_int server ardu
 
             // arduino interface
             case arduino.clear():
-                arduino_start = arduino_end;
+                arduino_start = arduino_end = 0;
                 break;
             case arduino.avalible() -> int return_val:
                 if(arduino_start != arduino_end) {
@@ -352,21 +352,13 @@ void multiRX(interface uart_int server reader, interface arduino_int server ardu
             case arduino.geti() -> int i:
                 if(fifo_length(arduino_start, arduino_end) >= 2) {
                     i = arduino_buffer[arduino_start];
-                    sprintf(buffer, "0 0x%X\r\n", arduino_buffer[arduino_start]);
-                    tx_str(DEBUGTX, buffer);
                     arduino_start = NEXT(arduino_start);
                     i |= arduino_buffer[arduino_start] << 8;
-                    sprintf(buffer, "1 0x%X\r\n", (arduino_buffer[arduino_start] << 8));
-                    tx_str(DEBUGTX, buffer);
                     arduino_start = NEXT(arduino_start);
-                    sprintf(buffer, "b %d\r\n", i);
-                    tx_str(DEBUGTX, buffer);
                     if(i & 0b1000000000000000) {
                         // negative
                         i |= (0b1111111111111111<<16); // make it all 1s in the front (2s complement form negative)
                     }
-                    sprintf(buffer, "a %d\r\n", i);
-                    tx_str(DEBUGTX, buffer);
                 } else {
                     i = -1;
                 }
